@@ -1,122 +1,187 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import { useState } from 'react';
+import type { FC } from 'react';
+import type {
+  Screen,
+  Language,
+  FarmerProfile,
+  FarmerListing,
+  BuyerOrder,
+  MandiPrice,
+} from './types';
+import {
+  initialFarmerProfile,
+  liveMandiPrices,
+  initialListings,
+  initialOrders,
+} from './data/dummyData';
+import { Header } from './components/Header';
+import { BottomNav } from './components/BottomNav';
+import { NotificationToast } from './components/NotificationToast';
+import type { ToastMessage } from './components/NotificationToast';
+import { LoginScreen } from './screens/LoginScreen';
+import { HomeScreen } from './screens/HomeScreen';
+import { SellScreen } from './screens/SellScreen';
+import { OrdersScreen } from './screens/OrdersScreen';
 
-function App() {
-  const [count, setCount] = useState(0)
+export const App: FC = () => {
+  // Authentication state (default: false as requested)
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+
+  // Screen routing state
+  const [currentScreen, setCurrentScreen] = useState<Screen>('home');
+
+  // Language state (EN / GU / HI)
+  const [language, setLanguage] = useState<Language>('EN');
+
+  // Application Data States
+  const [farmerProfile, setFarmerProfile] = useState<FarmerProfile>(initialFarmerProfile);
+  const [mandiPrices] = useState<MandiPrice[]>(liveMandiPrices);
+  const [listings, setListings] = useState<FarmerListing[]>(initialListings);
+  const [orders, setOrders] = useState<BuyerOrder[]>(initialOrders);
+
+  // Toast notification state
+  const [toast, setToast] = useState<ToastMessage | null>(null);
+
+  const showToast = (type: 'success' | 'info' | 'warning', title: string, message: string) => {
+    const id = `${Date.now()}`;
+    setToast({ id, type, title, message });
+    setTimeout(() => {
+      setToast((current) => (current?.id === id ? null : current));
+    }, 4500);
+  };
+
+  // Auth Handlers
+  const handleLoginSuccess = (mobileNumber: string) => {
+    setFarmerProfile((prev) => ({
+      ...prev,
+      mobile: mobileNumber,
+    }));
+    setIsAuthenticated(true);
+    setCurrentScreen('home');
+  };
+
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    showToast('info', 'Logged Out', 'You have been safely logged out.');
+  };
+
+  // Order Handlers
+  const handleAcceptOrder = (orderId: string) => {
+    const targetOrder = orders.find((o) => o.id === orderId);
+    if (!targetOrder) return;
+
+    setOrders((prev) =>
+      prev.map((o) => (o.id === orderId ? { ...o, status: 'accepted' as const } : o))
+    );
+
+    // Update farmer earnings & sold volume
+    setFarmerProfile((prev) => ({
+      ...prev,
+      totalEarnings: prev.totalEarnings + targetOrder.totalAmount,
+      totalQuantitySoldKg: prev.totalQuantitySoldKg + targetOrder.quantityKg,
+    }));
+
+    showToast(
+      'success',
+      'Order Accepted!',
+      `Accepted ${targetOrder.quantityKg} kg ${targetOrder.cropName} from ${targetOrder.buyerName}. ₹${targetOrder.totalAmount} added to total earnings!`
+    );
+  };
+
+  const handleDeclineOrder = (orderId: string) => {
+    setOrders((prev) =>
+      prev.map((o) => (o.id === orderId ? { ...o, status: 'declined' as const } : o))
+    );
+    showToast('info', 'Order Declined', 'The purchase request has been declined.');
+  };
+
+  // Listing Handlers
+  const handleAddListing = (newListing: FarmerListing) => {
+    setListings((prev) => [newListing, ...prev]);
+    setFarmerProfile((prev) => ({
+      ...prev,
+      activeListingsCount: prev.activeListingsCount + 1,
+    }));
+    // Navigate back to Home screen to see active listings
+    setCurrentScreen('home');
+  };
+
+  // Count pending orders for badge
+  const pendingOrdersCount = orders.filter((o) => o.status === 'pending').length;
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+    <div className="min-h-screen bg-slate-100 flex flex-col text-slate-900 font-sans selection:bg-green-200 w-full max-w-full overflow-x-hidden">
+      {/* Floating Toast Message */}
+      <NotificationToast toast={toast} onClose={() => setToast(null)} />
 
-      <div className="ticks"></div>
+      {/* Top Responsive Header (with Desktop Navigation Bar built-in) */}
+      <Header
+        language={language}
+        onLanguageChange={setLanguage}
+        isAuthenticated={isAuthenticated}
+        onLogout={handleLogout}
+        farmerName={farmerProfile.name}
+        activeScreen={currentScreen}
+        onSelectScreen={setCurrentScreen}
+        pendingOrdersCount={pendingOrdersCount}
+      />
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
+      {/* Main Content Area (Responsive width: full width on mobile, max-w-7xl on desktop) */}
+      <main className="flex-1 w-full max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-3 sm:py-5 pb-24 md:pb-12 overflow-x-hidden">
+        {!isAuthenticated ? (
+          <LoginScreen
+            language={language}
+            onLoginSuccess={handleLoginSuccess}
+            showToast={showToast}
+          />
+        ) : (
+          <>
+            {currentScreen === 'home' && (
+              <HomeScreen
+                farmerProfile={farmerProfile}
+                mandiPrices={mandiPrices}
+                listings={listings}
+                language={language}
+                onNavigateTo={setCurrentScreen}
+                showToast={showToast}
+              />
+            )}
+
+            {currentScreen === 'sell' && (
+              <SellScreen
+                language={language}
+                mandiPrices={mandiPrices}
+                onAddListing={handleAddListing}
+                showToast={showToast}
+              />
+            )}
+
+            {currentScreen === 'orders' && (
+              <OrdersScreen
+                orders={orders}
+                language={language}
+                onAcceptOrder={handleAcceptOrder}
+                onDeclineOrder={handleDeclineOrder}
+                showToast={showToast}
+              />
+            )}
+          </>
+        )}
+      </main>
+
+      {/* Fixed Bottom Navigation (Mobile only `md:hidden`, visible when logged in) */}
+      {isAuthenticated && (
+        <div className="md:hidden">
+          <BottomNav
+            activeScreen={currentScreen}
+            onSelectScreen={setCurrentScreen}
+            language={language}
+            pendingOrdersCount={pendingOrdersCount}
+          />
         </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+      )}
+    </div>
+  );
+};
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
-}
-
-export default App
+export default App;
